@@ -2,21 +2,37 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { prisma } from '../../lib/db'
-import { weightedScore, overallScore, scoreLabel, scoreColor } from '../../lib/scoring'
+import { weightedScore, overallScore, resolveWeight, scoreLabel, scoreColor } from '../../lib/scoring'
 
 async function getCandidates() {
-  const candidates = await prisma.candidate.findMany({
-    include: {
-      scores: { include: { components: true } },
-    },
-    orderBy: { name: 'asc' },
-  })
-  const qCount = await prisma.question.count()
+  const [candidates, questions, activeProfile] = await Promise.all([
+    prisma.candidate.findMany({
+      include: {
+        assessments: { include: { indicator: true } },
+      },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.question.findMany({ orderBy: { order: 'asc' } }),
+    prisma.weightingProfile.findFirst({
+      where: { isActive: true },
+      include: { typeWeights: true },
+    }),
+  ])
+
+  const typeWeights = {}
+  if (activeProfile) {
+    for (const tw of activeProfile.typeWeights) typeWeights[tw.type] = tw.weight
+  }
+  const qCount = questions.length
 
   return candidates.map((c) => {
-    const qScores = c.scores.map((s) => weightedScore(s.components))
+    const qScores = questions.map((q) => {
+      const assessments = c.assessments.filter(a => a.indicator.questionId === q.id)
+      const items = assessments.map(a => ({ value: a.value, weight: resolveWeight(a, typeWeights) }))
+      return weightedScore(items)
+    })
     const avg = overallScore(qScores)
-    const answered = qScores.filter((v) => v !== null).length
+    const answered = qScores.filter(v => v !== null).length
     return { ...c, overallScore: avg, answeredCount: answered, totalQ: qCount }
   })
 }

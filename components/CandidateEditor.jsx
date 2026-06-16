@@ -3,217 +3,89 @@
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import ScoreChip from './ScoreChip'
-import { weightedScore, scoreLabel, scoreColor, componentTypeLabel } from '../lib/scoring'
+import { scoreLabel, scoreColor, indicatorTypeLabel } from '../lib/scoring'
 
-const COMPONENT_TYPES = ['BILL_VOTE', 'PUBLIC_STATEMENT', 'CAMPAIGN_STATEMENT', 'CUSTOM']
-
-const TYPE_BADGE = {
-  BILL_VOTE: 'badge-bill',
-  PUBLIC_STATEMENT: 'badge-public',
-  CAMPAIGN_STATEMENT: 'badge-campaign',
-  CUSTOM: 'badge-custom',
+const STATUS_STYLE = {
+  UNVERIFIED:      { background: '#f5f5f5', color: '#666' },
+  MACHINE_VERIFIED:{ background: '#e8f5e9', color: '#2e7d32' },
+  AUTO_CORRECTED:  { background: '#e3f2fd', color: '#1565c0' },
+  FLAGGED:         { background: '#fff3e0', color: '#e65100' },
+  HUMAN_REVIEWED:  { background: '#f3e5f5', color: '#6a1b9a' },
 }
 
-function ComponentForm({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState({
-    type: initial?.type ?? 'CUSTOM',
-    value: initial?.value?.toString() ?? '',
-    weight: initial?.weight?.toString() ?? '1',
-    sourceUrl: initial?.sourceUrl ?? '',
-    sourceLabel: initial?.sourceLabel ?? '',
-    notes: initial?.notes ?? '',
-  })
+function AssessmentForm({ initial, onSave, onCancel }) {
+  const [value, setValue] = useState(initial?.value?.toString() ?? '')
+  const [rationale, setRationale] = useState(initial?.rationale ?? '')
   const [saving, setSaving] = useState(false)
-
-  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   async function handleSave(e) {
     e.preventDefault()
-    const val = parseFloat(form.value)
-    if (isNaN(val) || val < 1 || val > 5) {
-      alert('Score value must be between 1 and 5')
+    const val = value === '' ? null : parseInt(value, 10)
+    if (val !== null && (isNaN(val) || val < 1 || val > 5)) {
+      alert('Score must be between 1 and 5')
       return
     }
     setSaving(true)
-    await onSave({
-      type: form.type,
-      value: val,
-      weight: parseFloat(form.weight) || 1,
-      sourceUrl: form.sourceUrl || null,
-      sourceLabel: form.sourceLabel || null,
-      notes: form.notes || null,
-    })
+    await onSave({ value: val, rationale: rationale || null })
     setSaving(false)
   }
 
   return (
-    <form onSubmit={handleSave}>
+    <form onSubmit={handleSave} style={{ padding: '12px 4px' }}>
       <div className="form-group">
-        <label className="form-label">Type</label>
-        <select className="form-select" value={form.type} onChange={(e) => update('type', e.target.value)}>
-          {COMPONENT_TYPES.map((t) => (
-            <option key={t} value={t}>{componentTypeLabel(t)}</option>
-          ))}
-        </select>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div className="form-group">
-          <label className="form-label">Score (1–5)</label>
-          <input
-            className="form-input"
-            type="number"
-            min="1"
-            max="5"
-            step="0.5"
-            value={form.value}
-            onChange={(e) => update('value', e.target.value)}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Weight</label>
-          <input
-            className="form-input"
-            type="number"
-            min="0.1"
-            step="0.1"
-            value={form.weight}
-            onChange={(e) => update('weight', e.target.value)}
-          />
-        </div>
+        <label className="form-label">Score (1–5, blank = no position)</label>
+        <input
+          className="form-input"
+          type="number"
+          min="1"
+          max="5"
+          step="1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          style={{ width: 80 }}
+        />
       </div>
       <div className="form-group">
-        <label className="form-label">Notes / Evidence</label>
+        <label className="form-label">Rationale / Evidence</label>
         <textarea
           className="form-textarea"
-          value={form.notes}
-          onChange={(e) => update('notes', e.target.value)}
-          placeholder="Describe what this component is based on…"
-        />
-      </div>
-      <div className="form-group">
-        <label className="form-label">Source URL</label>
-        <input
-          className="form-input"
-          type="url"
-          value={form.sourceUrl}
-          onChange={(e) => update('sourceUrl', e.target.value)}
-          placeholder="https://..."
-        />
-      </div>
-      <div className="form-group">
-        <label className="form-label">Source Label</label>
-        <input
-          className="form-input"
-          type="text"
-          value={form.sourceLabel}
-          onChange={(e) => update('sourceLabel', e.target.value)}
-          placeholder="e.g. Senate press release"
+          value={rationale}
+          onChange={(e) => setRationale(e.target.value)}
+          rows={4}
+          placeholder="Describe the basis for this score…"
         />
       </div>
       <div className="overlay-footer">
         <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save component'}
+          {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
     </form>
   )
 }
 
-function NotesEditor({ scoreId, questionId, candidateId, initialNotes }) {
-  const [notes, setNotes] = useState(initialNotes)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+export default function CandidateEditor({ candidate, indicatorData: initialData }) {
+  const [indicatorData, setIndicatorData] = useState(initialData)
+  const [editing, setEditing] = useState(null)
 
-  async function save() {
-    setSaving(true)
-    await fetch(`/api/scores/${scoreId ?? 'new'}/notes`, {
+  const handleSave = useCallback((idx) => async (payload) => {
+    const item = indicatorData[idx]
+    if (!item.assessmentId) return
+
+    const res = await fetch(`/api/assessments/${item.assessmentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidateId, questionId, notes }),
+      body: JSON.stringify(payload),
     })
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  return (
-    <div style={{ padding: '8px 12px 12px', borderTop: '1px solid #edf0f3' }}>
-      <label className="form-label" style={{ marginBottom: 6 }}>Evidence / Notes (displayed on public scorecard)</label>
-      <textarea
-        className="form-textarea"
-        value={notes}
-        onChange={(e) => { setNotes(e.target.value); setSaved(false) }}
-        rows={3}
-      />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-        {saved && <span style={{ fontSize: 12, color: '#27ae60', alignSelf: 'center' }}>Saved</span>}
-        <button className="btn-ghost" onClick={save} disabled={saving} style={{ fontSize: 12, padding: '4px 12px' }}>
-          {saving ? 'Saving…' : 'Save notes'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-export default function CandidateEditor({ candidate, questionData: initialData }) {
-  const [questionData, setQuestionData] = useState(initialData)
-  const [addingTo, setAddingTo] = useState(null)
-  const [editingComponent, setEditingComponent] = useState(null)
-
-  const refreshScore = useCallback(async (qIdx, scoreId) => {
-    const res = await fetch(`/api/scores/${scoreId}/components`)
     if (!res.ok) return
-    const components = await res.json()
-    setQuestionData((prev) => prev.map((qd, i) => {
-      if (i !== qIdx) return qd
-      const computed = weightedScore(components)
-      return { ...qd, components, computed }
-    }))
-  }, [])
 
-  async function handleAddComponent(qIdx, qd) {
-    return async (payload) => {
-      let scoreId = qd.scoreId
-      if (!scoreId) {
-        const res = await fetch('/api/scores', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ candidateId: candidate.id, questionId: qd.question.id }),
-        })
-        const data = await res.json()
-        scoreId = data.id
-        setQuestionData((prev) => prev.map((d, i) => i === qIdx ? { ...d, scoreId } : d))
-      }
-
-      await fetch(`/api/scores/${scoreId}/components`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      await refreshScore(qIdx, scoreId)
-      setAddingTo(null)
-    }
-  }
-
-  async function handleEditComponent(qIdx, scoreId, componentId) {
-    return async (payload) => {
-      await fetch(`/api/scores/${scoreId}/components/${componentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      await refreshScore(qIdx, scoreId)
-      setEditingComponent(null)
-    }
-  }
-
-  async function handleDeleteComponent(qIdx, scoreId, componentId) {
-    if (!confirm('Delete this component?')) return
-    await fetch(`/api/scores/${scoreId}/components/${componentId}`, { method: 'DELETE' })
-    await refreshScore(qIdx, scoreId)
-  }
+    const updated = await res.json()
+    setIndicatorData((prev) => prev.map((d, i) =>
+      i === idx ? { ...d, value: updated.value, rationale: updated.rationale, reviewStatus: updated.reviewStatus, computed: updated.value } : d
+    ))
+    setEditing(null)
+  }, [indicatorData])
 
   return (
     <div className="page-wrap">
@@ -228,114 +100,74 @@ export default function CandidateEditor({ candidate, questionData: initialData }
         </div>
       </div>
 
-      {questionData.map((qd, qIdx) => {
-        const computed = weightedScore(qd.components)
-        const isAddingHere = addingTo === qIdx
-        const isEditing = editingComponent?.qIdx === qIdx
+      {indicatorData.map((item, idx) => {
+        const isEditingHere = editing === idx
+        const statusStyle = STATUS_STYLE[item.reviewStatus] ?? STATUS_STYLE.UNVERIFIED
 
         return (
-          <div key={qd.question.id} className="question-section">
+          <div key={item.indicator.id} className="question-section">
             <div className="question-section-header">
               <div className="question-section-title">
-                Q{qIdx + 1}: {qd.question.text}
+                Q{idx + 1}: {item.question.text}
               </div>
               <div className="question-computed-score">
-                <ScoreChip score={computed} className="static" />
+                <ScoreChip score={item.computed} className="static" />
                 <span style={{ fontSize: 12, color: '#666' }}>
-                  {computed !== null ? `${computed.toFixed(2)} · ${scoreLabel(computed)}` : 'No score'}
+                  {item.computed !== null ? `${item.computed} · ${scoreLabel(item.computed)}` : 'No score'}
                 </span>
               </div>
+              <span
+                style={{
+                  ...statusStyle,
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  fontWeight: 600,
+                  marginLeft: 8,
+                }}
+              >
+                {item.reviewStatus.replace(/_/g, ' ')}
+              </span>
               <button
                 className="btn-ghost"
                 style={{ fontSize: 12, padding: '4px 10px', marginLeft: 'auto' }}
-                onClick={() => setAddingTo(isAddingHere ? null : qIdx)}
+                onClick={() => setEditing(isEditingHere ? null : idx)}
               >
-                + Add component
+                {isEditingHere ? 'Cancel' : 'Edit'}
               </button>
             </div>
 
-            <div className="component-list">
-              {qd.components.length === 0 && !isAddingHere && (
-                <div className="empty-state" style={{ padding: '20px' }}>
-                  No score components yet. Add one above.
-                </div>
-              )}
-              {qd.components.map((comp) => {
-                const isEditingThis = editingComponent?.componentId === comp.id
-                return (
-                  <div key={comp.id} className="component-item">
-                    <ScoreChip score={comp.value} className="static" />
-                    <div className="component-body">
-                      {isEditingThis ? (
-                        <ComponentForm
-                          initial={comp}
-                          onSave={handleEditComponent(qIdx, qd.scoreId, comp.id)}
-                          onCancel={() => setEditingComponent(null)}
-                        />
-                      ) : (
-                        <>
-                          <div className="component-meta">
-                            <span className={`badge ${TYPE_BADGE[comp.type]}`}>
-                              {componentTypeLabel(comp.type)}
-                            </span>
-                            <span className="component-value" style={{ color: scoreColor(comp.value) }}>
-                              {comp.value}
-                            </span>
-                            <span className="component-weight">× {comp.weight} weight</span>
-                          </div>
-                          {comp.notes && <p className="component-notes">{comp.notes}</p>}
-                          {comp.sourceUrl && (
-                            <div className="component-source">
-                              <a href={comp.sourceUrl} target="_blank" rel="noopener noreferrer">
-                                ↗ {comp.sourceLabel || comp.sourceUrl}
-                              </a>
-                            </div>
-                          )}
-                          {!comp.sourceUrl && comp.sourceLabel && (
-                            <div className="component-source">{comp.sourceLabel}</div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    {!isEditingThis && (
-                      <div className="component-actions">
-                        <button
-                          className="btn-ghost"
-                          style={{ fontSize: 11, padding: '3px 8px' }}
-                          onClick={() => setEditingComponent({ qIdx, componentId: comp.id })}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn-danger"
-                          style={{ fontSize: 11, padding: '3px 8px' }}
-                          onClick={() => handleDeleteComponent(qIdx, qd.scoreId, comp.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
+            {isEditingHere ? (
+              <AssessmentForm
+                initial={item}
+                onSave={handleSave(idx)}
+                onCancel={() => setEditing(null)}
+              />
+            ) : (
+              <div className="component-list">
+                {item.rationale ? (
+                  <div className="component-item" style={{ display: 'block' }}>
+                    <p className="component-notes" style={{ margin: 0 }}>{item.rationale}</p>
+                  </div>
+                ) : (
+                  <div className="empty-state" style={{ padding: '16px 20px' }}>
+                    No rationale recorded. Click Edit to add one.
+                  </div>
+                )}
+
+                {item.sources.filter(s => s.url || s.title).map((source) => (
+                  <div key={source.id} className="component-source" style={{ padding: '6px 20px' }}>
+                    {source.url ? (
+                      <a href={source.url} target="_blank" rel="noopener noreferrer">
+                        ↗ {source.title || source.url}
+                      </a>
+                    ) : (
+                      source.title
                     )}
                   </div>
-                )
-              })}
-
-              {isAddingHere && (
-                <div style={{ padding: '12px 4px' }}>
-                  <ComponentForm
-                    initial={null}
-                    onSave={handleAddComponent(qIdx, qd)}
-                    onCancel={() => setAddingTo(null)}
-                  />
-                </div>
-              )}
-            </div>
-
-            <NotesEditor
-              scoreId={qd.scoreId}
-              questionId={qd.question.id}
-              candidateId={candidate.id}
-              initialNotes={qd.notes}
-            />
+                ))}
+              </div>
+            )}
           </div>
         )
       })}

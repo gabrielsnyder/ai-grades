@@ -1,49 +1,62 @@
 export const dynamic = 'force-dynamic'
 
 import { prisma } from '../lib/db'
-import { weightedScore, overallScore, scoreLabel, scoreColor, scoreClass } from '../lib/scoring'
+import { weightedScore, overallScore, resolveWeight } from '../lib/scoring'
 import Scorecard from '../components/Scorecard'
 
 async function getData() {
-  const [candidates, questions] = await Promise.all([
+  const [questions, candidates, activeProfile] = await Promise.all([
+    prisma.question.findMany({ orderBy: { order: 'asc' } }),
     prisma.candidate.findMany({
       include: {
-        scores: {
-          include: { components: true, question: true },
+        assessments: {
+          include: {
+            indicator: true,
+            sources: { include: { source: true } },
+          },
         },
       },
       orderBy: { name: 'asc' },
     }),
-    prisma.question.findMany({ orderBy: { order: 'asc' } }),
+    prisma.weightingProfile.findFirst({
+      where: { isActive: true },
+      include: { typeWeights: true },
+    }),
   ])
+
+  const typeWeights = {}
+  if (activeProfile) {
+    for (const tw of activeProfile.typeWeights) typeWeights[tw.type] = tw.weight
+  }
 
   const processed = candidates.map((c) => {
     const questionScores = questions.map((q) => {
-      const score = c.scores.find((s) => s.questionId === q.id)
-      const computed = score ? weightedScore(score.components) : null
+      const assessments = c.assessments.filter(a => a.indicator.questionId === q.id)
+      const items = assessments.map(a => ({ value: a.value, weight: resolveWeight(a, typeWeights) }))
+      const computed = weightedScore(items)
+      const primary = assessments[0]
+      const sources = assessments.flatMap(a =>
+        a.sources.map(as => ({
+          id: as.source.id,
+          url: as.source.url,
+          title: as.source.title,
+          excerpt: as.source.excerpt,
+        }))
+      )
       return {
         questionId: q.id,
         questionText: q.text,
         questionDesc: q.description,
-        scoreId: score?.id ?? null,
         computed,
-        notes: score?.notes ?? null,
-        components: score?.components ?? [],
+        rationale: primary?.rationale ?? null,
+        sources,
       }
     })
 
-    const avg = overallScore(questionScores.map((s) => s.computed))
-    const answered = questionScores.filter((s) => s.computed !== null).length
+    const avg = overallScore(questionScores.map(s => s.computed))
+    const answered = questionScores.filter(s => s.computed !== null).length
 
-    return {
-      id: c.id,
-      name: c.name,
-      state: c.state,
-      party: c.party,
-      questionScores,
-      overallScore: avg,
-      answeredCount: answered,
-    }
+    return { id: c.id, name: c.name, state: c.state, party: c.party, questionScores, overallScore: avg, answeredCount: answered }
   })
 
   return { candidates: processed, questions }

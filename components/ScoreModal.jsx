@@ -37,8 +37,8 @@ export default function ScoreModal({ candidate, qIdx, questions, anchorRect, onC
     desktopStyle = { left, top, width: PW }
   }
 
-  const evidence = qs.notes || qs.components[0]?.notes || 'No publicly stated position found.'
-  const sources = qs.components.filter((c) => c.sourceUrl || c.sourceLabel)
+  const evidence = qs.rationale || 'No publicly stated position found.'
+  const sources = (qs.sources || []).filter(s => s.url || s.title)
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -60,12 +60,12 @@ export default function ScoreModal({ candidate, qIdx, questions, anchorRect, onC
           </span>
         </div>
         <p className="modal-evidence">{evidence}</p>
-        {sources.map((comp, i) => (
+        {sources.map((source, i) => (
           <div key={i} className="modal-source">
-            {comp.sourceUrl ? (
-              <>Source: <a href={comp.sourceUrl} target="_blank" rel="noopener noreferrer">↗ {comp.sourceLabel || comp.sourceUrl}</a></>
+            {source.url ? (
+              <>Source: <a href={source.url} target="_blank" rel="noopener noreferrer">↗ {source.title || source.url}</a></>
             ) : (
-              <>Source: {comp.sourceLabel}</>
+              <>Source: {source.title}</>
             )}
           </div>
         ))}

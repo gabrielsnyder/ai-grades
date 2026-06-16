@@ -197,6 +197,25 @@ export default function Scorecard({ candidates, questions }) {
   )
 }
 
+function QuestionDetail({ qs, qIdx }) {
+  return (
+    <>
+      <p className="detail-evidence">
+        {qs.rationale || <em className="no-position">No publicly stated position found.</em>}
+      </p>
+      {qs.sources.filter(s => s.url || s.title).map((source, i) => (
+        source.url ? (
+          <div key={i} className="detail-source">
+            Source: <a href={source.url} target="_blank" rel="noopener noreferrer">{source.title || source.url}</a>
+          </div>
+        ) : (
+          <div key={i} className="detail-source">Source: {source.title}</div>
+        )
+      ))}
+    </>
+  )
+}
+
 function MobileCard({ candidate: c, questions, isExpanded, onToggle, onChipClick }) {
   const avg = c.overallScore
 
@@ -252,20 +271,7 @@ function MobileCard({ candidate: c, questions, isExpanded, onToggle, onChipClick
                     <ScoreChip score={qs.computed} className="static" />
                     <span className="detail-q-label">Q{qIdx + 1}: {qs.questionText}</span>
                   </div>
-                  <p className="detail-evidence">
-                    {qs.notes || (qs.components[0]?.notes) || (
-                      <em className="no-position">No publicly stated position found.</em>
-                    )}
-                  </p>
-                  {qs.components.map((comp, ci) => (
-                    comp.sourceUrl ? (
-                      <div key={ci} className="detail-source">
-                        Source: <a href={comp.sourceUrl} target="_blank" rel="noopener noreferrer">{comp.sourceLabel || comp.sourceUrl}</a>
-                      </div>
-                    ) : comp.sourceLabel ? (
-                      <div key={ci} className="detail-source">Source: {comp.sourceLabel}</div>
-                    ) : null
-                  ))}
+                  <QuestionDetail qs={qs} qIdx={qIdx} />
                 </div>
               ))}
             </div>
@@ -286,20 +292,7 @@ function DesktopDetailPanel({ candidate: c, questions }) {
               <ScoreChip score={qs.computed} className="static" />
               <span className="detail-q-label">Q{qIdx + 1}: {qs.questionText}</span>
             </div>
-            <p className="detail-evidence">
-              {qs.notes || qs.components[0]?.notes || (
-                <em className="no-position">No publicly stated position found.</em>
-              )}
-            </p>
-            {qs.components.map((comp, ci) => (
-              comp.sourceUrl ? (
-                <div key={ci} className="detail-source">
-                  Source: <a href={comp.sourceUrl} target="_blank" rel="noopener noreferrer">{comp.sourceLabel || comp.sourceUrl}</a>
-                </div>
-              ) : comp.sourceLabel ? (
-                <div key={ci} className="detail-source">Source: {comp.sourceLabel}</div>
-              ) : null
-            ))}
+            <QuestionDetail qs={qs} qIdx={qIdx} />
           </div>
         ))}
       </div>
