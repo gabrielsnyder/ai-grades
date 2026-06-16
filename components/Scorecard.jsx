@@ -112,7 +112,7 @@ export default function Scorecard({ candidates, questions }) {
         <table>
           <thead>
             <tr>
-              <th onClick={() => setSort('name')} className={sort === 'name' ? 'sort-asc' : ''}>Senator</th>
+              <th onClick={() => setSort('name')} className={sort === 'name' ? 'sort-asc' : ''}>Candidate</th>
               <th onClick={() => setSort('state')} className={sort === 'state' ? 'sort-asc' : ''}>State</th>
               <th>Party</th>
               {questions.map((q, i) => (
