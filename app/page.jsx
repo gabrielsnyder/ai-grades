@@ -10,6 +10,7 @@ async function getData() {
     prisma.candidate.findMany({
       include: {
         assessments: {
+          where: { reviewStatus: { in: ['MACHINE_VERIFIED', 'AUTO_CORRECTED', 'HUMAN_REVIEWED'] } },
           include: {
             indicator: true,
             sources: { include: { source: true } },

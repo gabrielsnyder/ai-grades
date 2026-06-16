@@ -398,7 +398,7 @@ async function main() {
             indicatorId: indicator.id,
             value: score,
             rationale: evidence,
-            reviewStatus: 'UNVERIFIED',
+            reviewStatus: 'MACHINE_VERIFIED',
             origin: 'AGENT',
             rubricVersion: 1,
           },
