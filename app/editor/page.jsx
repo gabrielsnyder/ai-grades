@@ -31,6 +31,7 @@ async function getData() {
     name: c.name,
     state: c.state,
     party: c.party,
+    office: c.office ?? null,
     perQuestion: questions.map((q) => ({
       questionId: q.id,
       questionText: q.text,

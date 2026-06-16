@@ -14,7 +14,7 @@ export default function EditorNav({ flagCount }) {
 
   return (
     <nav className="nav-bar">
-      <Link href="/" className="nav-brand">AI Policy Tracker</Link>
+      <Link href="/" className="nav-brand">AI Policy Scorecard</Link>
       <Link href="/editor" className={`nav-link ${pathname === '/editor' ? 'active' : ''}`}>
         Candidates
       </Link>

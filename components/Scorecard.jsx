@@ -112,11 +112,11 @@ export default function Scorecard({ candidates, questions }) {
         <table>
           <thead>
             <tr>
-              <th onClick={() => setSort('name')} className={sort === 'name' ? 'sort-asc' : ''}>Senator</th>
-              <th onClick={() => setSort('state')} className={sort === 'state' ? 'sort-asc' : ''}>State</th>
-              <th>Party</th>
+              <th onClick={() => setSort('name')} className={sort === 'name' ? 'sort-asc' : ''}>Candidate</th>
+              <th onClick={() => setSort('state')} className={sort === 'state' ? 'sort-asc' : ''} style={{ width: 52 }}>State</th>
+              <th style={{ width: 60 }}>Party</th>
               {questions.map((q, i) => (
-                <th key={q.id} title={q.text}>
+                <th key={q.id} title={q.text} style={{ width: 46, textAlign: 'center' }}>
                   Q{i + 1}<br />
                   <span style={{ fontWeight: 400, fontSize: 10 }}>{q.text.split(' ')[0]}</span>
                 </th>
@@ -124,6 +124,7 @@ export default function Scorecard({ candidates, questions }) {
               <th
                 onClick={() => setSort(sort === 'score-desc' ? 'score-asc' : 'score-desc')}
                 className={sort.startsWith('score') ? (sort === 'score-asc' ? 'sort-asc' : 'sort-desc') : ''}
+                style={{ width: 108 }}
               >
                 Overall
               </th>

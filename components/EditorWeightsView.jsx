@@ -128,6 +128,7 @@ export default function EditorWeightsView({ candidatesRaw, questions, initialTyp
             <tr>
               <th>Name</th>
               <th>State</th>
+              <th>Office</th>
               <th>Party</th>
               <th>Overall Score</th>
               <th>Coverage</th>
@@ -139,6 +140,7 @@ export default function EditorWeightsView({ candidatesRaw, questions, initialTyp
               <tr key={c.id}>
                 <td style={{ fontWeight: 600 }}>{c.name}</td>
                 <td style={{ color: '#555' }}>{c.state}</td>
+                <td style={{ color: '#555', fontSize: 12 }}>{c.office ?? '—'}</td>
                 <td>
                   <span className={`party-badge ${c.party}`}>{c.party}</span>
                 </td>
