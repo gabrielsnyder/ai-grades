@@ -112,8 +112,8 @@ export default function Scorecard({ candidates, questions }) {
         <table>
           <thead>
             <tr>
-              <th onClick={() => setSort('name')} className={sort === 'name' ? 'sort-asc' : ''}>Candidate</th>
-              <th onClick={() => setSort('state')} className={sort === 'state' ? 'sort-asc' : ''} style={{ width: 52 }}>State</th>
+              <th onClick={() => setSort('name')} className={sort === 'name' ? 'sort-asc' : ''} style={{ width: 240 }}>Candidate</th>
+              <th onClick={() => setSort('state')} className={sort === 'state' ? 'sort-asc' : ''} style={{ width: 80 }}>Office</th>
               <th style={{ width: 60 }}>Party</th>
               {questions.map((q, i) => (
                 <th key={q.id} title={q.text} style={{ width: 46, textAlign: 'center' }}>
@@ -138,8 +138,8 @@ export default function Scorecard({ candidates, questions }) {
                   onClick={() => toggleExpand(c.id)}
                   style={{ cursor: 'pointer' }}
                 >
-                  <td className="td-name">{c.name}</td>
-                  <td className="td-state">{c.state}</td>
+                  <td className="td-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</td>
+                  <td className="td-state">{c.office ?? c.state}</td>
                   <td><span className={`party-badge ${c.party}`}>{c.party}</span></td>
                   {c.questionScores.map((qs, qIdx) => (
                     <td key={qs.questionId} className="score-cell">
