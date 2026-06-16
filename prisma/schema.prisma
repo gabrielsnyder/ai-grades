@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Candidate {
+  id        String          @id @default(cuid())
+  name      String
+  state     String
+  party     String
+  groupId   String?
+  group     CandidateGroup? @relation(fields: [groupId], references: [id])
+  scores    Score[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([groupId])
+}
+
+model CandidateGroup {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  candidates  Candidate[]
+}
+
+model Question {
+  id          String  @id @default(cuid())
+  text        String
+  description String?
+  shortLabel  String?
+  order       Int
+  scores      Score[]
+
+  @@index([order])
+}
+
+model Score {
+  id          String           @id @default(cuid())
+  candidateId String
+  questionId  String
+  candidate   Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  question    Question         @relation(fields: [questionId], references: [id])
+  components  ScoreComponent[]
+  notes       String?
+
+  @@unique([candidateId, questionId])
+  @@index([candidateId])
+  @@index([questionId])
+}
+
+model ScoreComponent {
+  id          String        @id @default(cuid())
+  scoreId     String
+  score       Score         @relation(fields: [scoreId], references: [id], onDelete: Cascade)
+  type        ComponentType @default(CUSTOM)
+  value       Float
+  weight      Float         @default(1.0)
+  sourceUrl   String?
+  sourceLabel String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([scoreId])
+}
+
+enum ComponentType {
+  BILL_VOTE
+  PUBLIC_STATEMENT
+  CAMPAIGN_STATEMENT
+  CUSTOM
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(EDITOR)
+  createdAt    DateTime @default(now())
+}
+
+enum UserRole {
+  ADMIN
+  EDITOR
+}
