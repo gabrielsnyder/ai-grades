@@ -18,7 +18,7 @@ export async function PUT(request, { params }) {
       data: {
         value: value ?? null,
         rationale: rationale ?? null,
-        reviewStatus: 'UNVERIFIED',
+        reviewStatus: 'HUMAN_REVIEWED',
         origin: 'HUMAN',
       },
     })

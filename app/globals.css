@@ -711,6 +711,36 @@ select {
   margin-bottom: 24px;
 }
 
+/* ── Nav links + flag badge ───────────────────────────────────────────────────── */
+.nav-link {
+  color: rgba(255,255,255,.75);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.nav-link:hover { color: #fff; }
+.nav-link.active { color: #fff; border-bottom-color: #fff; }
+
+.flag-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: #e53935;
+  color: #fff;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 @media (min-width: 768px) {
   .page-wrap { padding: 32px 24px; }
   .nav-bar { padding: 0 32px; }
