@@ -69,8 +69,7 @@ export default async function HomePage() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Senate AI Policy Tracker — 2026 Incumbents</h1>
-        <p>Class 2 senators running for reelection · Scored from public statements, votes, and legislation as of June 2026 · For editorial review</p>
+        <h1>AI Policy Scorecard</h1>
       </header>
 
       <Scorecard candidates={candidates} questions={questions} />
@@ -82,11 +81,7 @@ export default async function HomePage() {
         </p>
         <p>
           <strong>Scoring: </strong>
-          1 = most skeptic/restrictive · 5 = most pro-acceleration/deregulatory · Scores of 2 and 4 mark intermediate positions · "–" = no publicly stated position (excluded from average)
-        </p>
-        <p>
-          <strong>Key vote: </strong>
-          The Q2 score for virtually all incumbents is anchored by the July 1, 2025 Senate vote (99–1) to strip the 10-year AI moratorium on state regulations from the "One Big Beautiful Bill."
+          1 = most skeptic/restrictive · 5 = most pro-acceleration/deregulatory · "–" = no publicly stated position (excluded from average)
         </p>
       </footer>
     </div>

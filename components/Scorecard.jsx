@@ -90,7 +90,7 @@ export default function Scorecard({ candidates, questions }) {
             <option value="score-desc">Score (high→low)</option>
           </select>
         </div>
-        <span className="count">{list.length} senator{list.length !== 1 ? 's' : ''}</span>
+        <span className="count">{list.length} candidate{list.length !== 1 ? 's' : ''}</span>
       </div>
 
       {/* ── Mobile cards ── */}
@@ -220,7 +220,7 @@ function MobileCard({ candidate: c, questions, isExpanded, onToggle, onChipClick
   const avg = c.overallScore
 
   return (
-    <div className={`senator-card ${isExpanded ? 'expanded' : ''}`}>
+    <div className={`candidate-card ${isExpanded ? 'expanded' : ''}`}>
       <div className="card-main" onClick={onToggle}>
         <div className="card-info">
           <div className="card-name">{c.name}</div>
