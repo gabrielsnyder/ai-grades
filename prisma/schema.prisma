@@ -90,18 +90,21 @@ model Question {
 }
 
 model Indicator {
-  id               String           @id @default(cuid())
+  id               String          @id @default(cuid())
   questionId       String
-  question         Question         @relation(fields: [questionId], references: [id])
+  question         Question        @relation(fields: [questionId], references: [id])
   name             String
   type             IndicatorType
-  rubric           String           @db.Text
-  rubricVersion    Int              @default(1)
+  rubric           String          @db.Text
+  rubricVersion    Int             @default(1)
   weight           Float?
+  meta             Json?
+  chamber          String?         // 'SENATE' | 'HOUSE' | null (chamber-agnostic)
   appliesToGroupId String?
-  appliesToGroup   CandidateGroup?  @relation(fields: [appliesToGroupId], references: [id])
+  appliesToGroup   CandidateGroup? @relation(fields: [appliesToGroupId], references: [id])
   assessments      Assessment[]
 
+  @@unique([questionId, type, name])
   @@index([questionId])
 }
 

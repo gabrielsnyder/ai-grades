@@ -1,4 +1,5 @@
-import { prisma } from '../lib/db.js'
+import pkg from '../lib/db.js'
+const { prisma } = pkg
 
 const senators = await prisma.candidate.findMany({
   where: { office: 'Senate' },
