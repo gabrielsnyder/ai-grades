@@ -344,6 +344,117 @@ function FinderPanel() {
   )
 }
 
+function ResearchPanel({ candidateCount }) {
+  const [batchSize, setBatchSize] = useState(20)
+  const [office, setOffice] = useState('all')
+  const [running, setRunning] = useState(false)
+  const [log, setLog] = useState([])
+  const [summary, setSummary] = useState(null)
+
+  async function startBatch() {
+    setRunning(true)
+    setLog([])
+    setSummary(null)
+
+    try {
+      const resp = await fetch('/api/agent/research/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchSize, office: office === 'all' ? undefined : office }),
+      })
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const evt = JSON.parse(line.slice(6))
+
+          if (evt.type === 'start') {
+            setLog([`Starting research on ${evt.total} candidates…`])
+          } else if (evt.type === 'progress') {
+            setLog(prev => [...prev, `[${evt.current}/${evt.total}] ${evt.name} (${evt.office ?? ''})`])
+          } else if (evt.type === 'candidate_done') {
+            setLog(prev => [...prev.slice(0, -1),
+              `[done] ${evt.name} — ${evt.findings} findings, ${evt.assessed} scored${evt.errors > 0 ? `, ${evt.errors} errors` : ''}`
+            ])
+          } else if (evt.type === 'candidate_error') {
+            setLog(prev => [...prev, `[error] ${evt.name}: ${evt.error}`])
+          } else if (evt.type === 'complete') {
+            setSummary(evt)
+          } else if (evt.type === 'error') {
+            setLog(prev => [...prev, `Fatal error: ${evt.error}`])
+          }
+        }
+      }
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <section>
+      <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1F3B57', marginBottom: 14 }}>Batch Research</h2>
+      <div className="card" style={{ padding: '20px 24px', marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>
+          Runs the research pipeline (Serper search → MiniMax categorization → scoring) for candidates
+          that have not yet been researched. Processes one candidate at a time and streams progress.
+        </p>
+
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+          <div>
+            <div className="form-label" style={{ marginBottom: 6 }}>Batch size</div>
+            <select className="form-select" value={batchSize} onChange={e => setBatchSize(Number(e.target.value))} style={{ width: 80 }}>
+              {[5, 10, 20].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="form-label" style={{ marginBottom: 6 }}>Office</div>
+            <select className="form-select" value={office} onChange={e => setOffice(e.target.value)}>
+              <option value="all">All ({candidateCount})</option>
+              <option value="S">Senate only</option>
+              <option value="H">House only</option>
+            </select>
+          </div>
+          <button className="btn-primary" onClick={startBatch} disabled={running} style={{ fontSize: 13 }}>
+            {running ? 'Researching…' : 'Run Research Batch'}
+          </button>
+        </div>
+
+        {summary && (
+          <div style={{ background: '#e8f5e9', borderRadius: 6, padding: '10px 14px', marginBottom: 12, fontSize: 13 }}>
+            <strong style={{ color: '#2e7d32' }}>Batch complete</strong>
+            {' — '}
+            {summary.total} candidates · {summary.totalFindings} findings · {summary.totalAssessed} scored
+            {summary.totalErrors > 0 && <span style={{ color: '#c62828' }}> · {summary.totalErrors} errors</span>}
+          </div>
+        )}
+
+        {log.length > 0 && (
+          <div style={{
+            maxHeight: 300, overflowY: 'auto', background: '#f8fafc',
+            borderRadius: 6, padding: '8px 12px', fontFamily: 'monospace', fontSize: 12,
+          }}>
+            {log.map((line, i) => (
+              <div key={i} style={{ padding: '2px 0', color: line.startsWith('[error]') ? '#c62828' : line.startsWith('[done]') ? '#2e7d32' : '#333' }}>
+                {line}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export default function AdminDashboard({ users, questions, groups, candidateCount }) {
   const [tab, setTab] = useState('questions')
 
@@ -358,6 +469,7 @@ export default function AdminDashboard({ users, questions, groups, candidateCoun
           { key: 'questions', label: 'Questions' },
           { key: 'groups', label: 'Groups' },
           { key: 'users', label: 'Users' },
+          { key: 'research', label: 'Research' },
           { key: 'agents', label: 'Agents' },
         ].map(({ key, label }) => (
           <button
@@ -382,6 +494,7 @@ export default function AdminDashboard({ users, questions, groups, candidateCoun
       {tab === 'questions' && <QuestionsPanel questions={questions} />}
       {tab === 'groups' && <GroupsPanel groups={groups} candidateCount={candidateCount} />}
       {tab === 'users' && <UsersPanel users={users} />}
+      {tab === 'research' && <ResearchPanel candidateCount={candidateCount} />}
       {tab === 'agents' && <FinderPanel />}
     </div>
   )
