@@ -40,7 +40,7 @@ export default function LoginPage() {
     <div className="login-wrap">
       <div className="login-card">
         <h1>Sign in</h1>
-        <p>Senate AI Policy Tracker — Editor Access</p>
+        <p>AI Policy Scorecard — Editor Access</p>
 
         {error && <div className="error-msg">{error}</div>}
 
