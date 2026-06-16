@@ -98,10 +98,12 @@ model Indicator {
   rubric           String           @db.Text
   rubricVersion    Int              @default(1)
   weight           Float?
+  meta             Json?
   appliesToGroupId String?
   appliesToGroup   CandidateGroup?  @relation(fields: [appliesToGroupId], references: [id])
   assessments      Assessment[]
 
+  @@unique([questionId, type, name])
   @@index([questionId])
 }
 
