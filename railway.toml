@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "npm install && npx prisma generate && npm run build"
 
 [deploy]
-startCommand = "npx prisma migrate resolve --rolled-back 20260616000000_phase1_new_schema 2>/dev/null || true && npx prisma migrate deploy && npm start"
+startCommand = "npx prisma db push && npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"
