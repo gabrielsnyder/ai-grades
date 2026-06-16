@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 function UsersPanel({ users }) {
@@ -344,17 +344,41 @@ function FinderPanel() {
   )
 }
 
+const STORAGE_KEY = 'research-panel-state'
+
 function ResearchPanel({ candidateCount }) {
   const [batchSize, setBatchSize] = useState(20)
   const [office, setOffice] = useState('all')
   const [running, setRunning] = useState(false)
   const [log, setLog] = useState([])
   const [summary, setSummary] = useState(null)
+  const logRef = useRef(log)
+
+  // Restore persisted state on mount
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
+      if (saved) {
+        if (saved.log?.length) setLog(saved.log)
+        if (saved.summary) setSummary(saved.summary)
+        // If the page was closed mid-run, mark it as no longer running
+      }
+    } catch {}
+  }, [])
+
+  // Persist log + summary whenever they change
+  useEffect(() => {
+    logRef.current = log
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ log, summary }))
+    } catch {}
+  }, [log, summary])
 
   async function startBatch() {
     setRunning(true)
     setLog([])
     setSummary(null)
+    localStorage.removeItem(STORAGE_KEY)
 
     try {
       const resp = await fetch('/api/agent/research/batch', {
@@ -439,16 +463,26 @@ function ResearchPanel({ candidateCount }) {
         )}
 
         {log.length > 0 && (
-          <div style={{
-            maxHeight: 300, overflowY: 'auto', background: '#f8fafc',
-            borderRadius: 6, padding: '8px 12px', fontFamily: 'monospace', fontSize: 12,
-          }}>
-            {log.map((line, i) => (
-              <div key={i} style={{ padding: '2px 0', color: line.startsWith('[error]') ? '#c62828' : line.startsWith('[done]') ? '#2e7d32' : '#333' }}>
-                {line}
-              </div>
-            ))}
-          </div>
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+              <button
+                style={{ fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+                onClick={() => { setLog([]); setSummary(null); localStorage.removeItem(STORAGE_KEY) }}
+              >
+                Clear log
+              </button>
+            </div>
+            <div style={{
+              maxHeight: 300, overflowY: 'auto', background: '#f8fafc',
+              borderRadius: 6, padding: '8px 12px', fontFamily: 'monospace', fontSize: 12,
+            }}>
+              {log.map((line, i) => (
+                <div key={i} style={{ padding: '2px 0', color: line.startsWith('[error]') ? '#c62828' : line.startsWith('[done]') ? '#2e7d32' : '#333' }}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </section>
