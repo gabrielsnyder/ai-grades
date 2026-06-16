@@ -66,6 +66,8 @@ These drive every schema and code decision. If a change violates one of these, s
 
 **Search is decoupled from the LLM.** Anthropic's bundled web-search tool only runs inside a Claude call and costs $10/1k searches; MiniMax can't use it at all. So the Researcher uses **Serper** ($0.30–$1.00/1k) for raw results, optionally a cheap MiniMax pass to compress/filter results, then feeds the model. This makes search provider-agnostic and ~10–30× cheaper on search fees.
 
+**The Researcher maintains a research library (SearchCache) before calling Serper.** All Serper results are saved to `SearchCache` at query time. On subsequent Researcher runs — whether for the same candidate or a different one asking about the same topic — the Researcher queries the library first. A cache hit reuses the stored payload and skips the Serper call entirely. As the corpus grows to 800+ candidates, the proportion of Serper calls that can be satisfied from the library grows too. The cache is the primary cost lever for search at scale.
+
 ---
 
 ## 5. Target data model
@@ -124,6 +126,25 @@ Source { id, candidateId, url, title, excerpt Text, publishedAt?, status (FOUND|
 AssessmentSource { assessmentId, sourceId }   // many-to-many
 ```
 
+**`SearchCache`** — the research library. All Serper results are saved here; the Researcher queries this before calling Serper.
+```
+SearchCache {
+  id
+  query           String   // raw query string as sent to Serper
+  normalizedQuery String   // lowercased, trimmed, de-duped token form for fast lookup
+  results         Json     // full Serper response payload
+  resultCount     Int
+  source          String   @default("SERPER")
+  fetchedAt       DateTime @default(now())
+  expiresAt       DateTime?  // optional TTL; null = never expire
+  hitCount        Int      @default(0)   // incremented on each cache hit
+  candidateId?             // tagged at search time for traceability
+  indicatorId?
+  @@index([normalizedQuery])
+}
+```
+Query strategy: exact match on `normalizedQuery` first, then optional fuzzy/prefix match for near-duplicate queries. Expiry is per-entry; a rubric change or known election date can trigger selective expiry without clearing the whole cache.
+
 **`AgentRun`** — provenance + re-run control.
 ```
 AgentRun {
@@ -132,7 +153,9 @@ AgentRun {
   scope Json          // { candidateIds?, indicatorIds?, groupId? }
   provider, model     // which LLM produced this run
   dryRun Bool
-  costInputTokens, costOutputTokens, searchCount
+  costInputTokens, costOutputTokens
+  searchCount         Int   // Serper calls actually fired (cache hits not counted)
+  cacheHitCount       Int   // SearchCache hits that saved a Serper call
   error?, startedAt?, finishedAt?, createdAt
 }
 ```
@@ -164,11 +187,12 @@ Each agent is an `AgentRun` type, executed by the worker (§8). For each: input 
 | Agent | Input | Output | Surface | Default model |
 |---|---|---|---|---|
 | **Finder** | office, year, state filter; FEC/Ballotpedia API | `Candidate` rows | Authoritative API + 1 LLM call for name normalization/dedupe | MiniMax |
-| **Researcher** | candidate × indicator | `Source` rows (FOUND) | Serper search → fetch → extract; optional MiniMax compress pass | MiniMax |
+| **Researcher** | candidate × indicator | `Source` rows (FOUND) | **Check `SearchCache` first**; cache miss → Serper → save to cache; fetch + extract; optional MiniMax compress pass | MiniMax |
 | **Assessor** | candidate × indicator + its sources + rubric | `Assessment` (UNVERIFIED) | **Single call, structured output**; cache the rubric prefix; Batches for bulk | Sonnet 4.6 |
 | **Verifier** | an Assessment + its sources | `Correction`/`Flag` + status transition | **Single fresh-context call, structured output**; deterministic checks first | MiniMax screen → Sonnet on flagged |
 
 ### Agent design notes
+- **Researcher: cache-first, Serper second.** Before any Serper call, the Researcher normalizes the query (`normalizedQuery`) and looks up `SearchCache`. A hit reuses the stored payload (increment `hitCount`), skips the Serper call, and tags the entry with `candidateId`/`indicatorId` if not already set. A miss calls Serper, saves the full response to `SearchCache`, then proceeds to fetch + extract. Log `searchCount` and `cacheHitCount` on `AgentRun` so the admin dashboard can show cache efficiency over time.
 - **Finder: API is ground truth, LLM only normalizes.** Never let the LLM *enumerate* candidates — hallucination/omission is a credibility risk. Pull the roster from FEC OpenFEC or Ballotpedia; use one LLM call to fuzzy-match names and dedupe.
 - **Assessor:** one structured-output call per (candidate × indicator) returning `{ value: 1–5, rationale, confidence, citedSourceIds }`. Cache the rubric + instructions (stable prefix); vary only the candidate/source suffix. Submit via the **Batches API** when re-scoring in bulk (not latency-sensitive).
 - **Verifier (the QA centerpiece):**
@@ -252,9 +276,13 @@ Each phase has acceptance criteria. Verify before moving on. **Phases 1–3 are 
 - `graphile-worker` service; `AgentRun` lifecycle; scoped runs; dry-run diff UI in admin.
 - **Done when:** admin triggers a scoped dry-run, sees the diff, then commits it.
 
-### Phase 7 — Researcher + Serper
-- Serper client; search → fetch → extract `Source` rows; optional MiniMax compression.
-- **Done when:** a Researcher run populates `Source`s with URLs + excerpts for a candidate×indicator.
+### Phase 7 — Researcher + Serper + research library
+- Serper client; `SearchCache` table (from Phase 1 schema); cache-first lookup; cache miss → Serper call → save to library; fetch → extract `Source` rows; optional MiniMax compression.
+- **Done when:**
+  - A Researcher run populates `Source`s with URLs + excerpts for a candidate×indicator.
+  - Running the same Researcher twice fires Serper only once; the second run is a cache hit (`hitCount` increments, `cacheHitCount` on `AgentRun` > 0).
+  - Admin can see `searchCount` vs `cacheHitCount` per `AgentRun`.
+  - Cache entries have `fetchedAt`; expired entries (`expiresAt < now()`) are treated as misses.
 
 ### Phase 8 — Finder
 - FEC/Ballotpedia ingest + LLM name-normalization → `Candidate` rows (`office`, `electionYear`, `externalId`).
@@ -298,7 +326,7 @@ Each phase has acceptance criteria. Verify before moving on. **Phases 1–3 are 
 - **Scale assumption:** 800+ candidates, **machine-maintained**, no per-record human review.
 - **QA model:** machine-in-the-loop. Verifier agent auto-corrects + flags; humans handle exceptions + gold set.
 - **Weights:** separable from scores, applied at rollup; live re-weighting with no re-run.
-- **Search:** decoupled via **Serper** (not Anthropic's bundled web search); MiniMax filter pass optional.
+- **Search:** decoupled via **Serper** (not Anthropic's bundled web search); MiniMax filter pass optional. All Serper results saved to `SearchCache`; Researcher checks the library first before firing new Serper calls.
 - **Providers:** single `@anthropic-ai/sdk`; **MiniMax** (Anthropic-compatible, caching on) for bulk; **Claude Sonnet 4.6** default, **Opus 4.8** escalation only.
 - **Cost levers:** prompt caching + Batches API + cheap→strong cascade.
 - **Orchestration:** Railway worker + `graphile-worker` Postgres queue; scoped, idempotent, dry-runnable `AgentRun`s.
@@ -315,3 +343,4 @@ Each phase has acceptance criteria. Verify before moving on. **Phases 1–3 are 
 - **Weighting Profile** — a named set of weights applied across a candidate group.
 - **Published set** — assessments visible on the public scorecard (`MACHINE_VERIFIED ∪ AUTO_CORRECTED ∪ HUMAN_REVIEWED`).
 - **Cascade** — cheap model screens everything, strong model re-checks only the uncertain slice.
+- **SearchCache / Research library** — a DB table that stores every Serper result payload. The Researcher queries it (by normalized query string) before calling Serper; a hit skips the paid call. Grows more valuable as candidate count scales — later runs on similar topics hit the library at high rates.
