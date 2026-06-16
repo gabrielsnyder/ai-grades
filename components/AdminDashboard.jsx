@@ -244,6 +244,106 @@ function GroupsPanel({ groups, candidateCount }) {
   )
 }
 
+function FinderPanel() {
+  const [offices, setOffices] = useState({ S: true, H: true })
+  const [cycle, setCycle] = useState(2026)
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  async function run(dryRun) {
+    setRunning(true)
+    setResult(null)
+    setError('')
+    try {
+      const selectedOffices = Object.entries(offices).filter(([, v]) => v).map(([k]) => k)
+      const res = await fetch('/api/agent/find', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offices: selectedOffices, cycle, dryRun }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? 'Failed'); return }
+      setResult(data)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <section>
+      <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1F3B57', marginBottom: 14 }}>Candidate Finder</h2>
+      <div className="card" style={{ padding: '20px 24px', marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>
+          Pulls incumbents running for re-election from the FEC API and creates Candidate records.
+          Deduplicates by FEC candidate ID — existing records are skipped.
+        </p>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <div className="form-label" style={{ marginBottom: 8 }}>Offices</div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {[['S', 'Senate'], ['H', 'House']].map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={offices[key]}
+                    onChange={(e) => setOffices(o => ({ ...o, [key]: e.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="form-label" style={{ marginBottom: 8 }}>Election cycle</div>
+            <input
+              className="form-input"
+              type="number"
+              value={cycle}
+              onChange={(e) => setCycle(parseInt(e.target.value, 10))}
+              style={{ width: 90 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-ghost" onClick={() => run(true)} disabled={running} style={{ fontSize: 13 }}>
+              {running ? 'Running…' : 'Preview (dry run)'}
+            </button>
+            <button className="btn-primary" onClick={() => run(false)} disabled={running} style={{ fontSize: 13 }}>
+              {running ? 'Running…' : 'Run Finder'}
+            </button>
+          </div>
+        </div>
+
+        {error && <div className="error-msg" style={{ marginTop: 16 }}>{error}</div>}
+
+        {result && (
+          <div style={{ marginTop: 20, fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: result.dryRun ? '#e65100' : '#2e7d32' }}>
+              {result.dryRun ? 'Dry run — no changes made' : 'Done'}
+            </div>
+            <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+              <span><strong>{result.created.length}</strong> {result.dryRun ? 'would be added' : 'added'}</span>
+              <span><strong>{result.skipped.length}</strong> skipped (already exist)</span>
+              {result.errors.length > 0 && <span style={{ color: '#c62828' }}><strong>{result.errors.length}</strong> errors</span>}
+            </div>
+            {result.created.length > 0 && (
+              <div style={{ maxHeight: 200, overflowY: 'auto', background: '#f8fafc', borderRadius: 6, padding: '8px 12px' }}>
+                {result.created.map((c, i) => (
+                  <div key={i} style={{ fontSize: 12, padding: '2px 0', color: '#333' }}>
+                    {c.name} · {c.office} · <span className={`party-badge ${c.party}`}>{c.party}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export default function AdminDashboard({ users, questions, groups, candidateCount }) {
   const [tab, setTab] = useState('questions')
 
@@ -258,6 +358,7 @@ export default function AdminDashboard({ users, questions, groups, candidateCoun
           { key: 'questions', label: 'Questions' },
           { key: 'groups', label: 'Groups' },
           { key: 'users', label: 'Users' },
+          { key: 'agents', label: 'Agents' },
         ].map(({ key, label }) => (
           <button
             key={key}
@@ -281,6 +382,7 @@ export default function AdminDashboard({ users, questions, groups, candidateCoun
       {tab === 'questions' && <QuestionsPanel questions={questions} />}
       {tab === 'groups' && <GroupsPanel groups={groups} candidateCount={candidateCount} />}
       {tab === 'users' && <UsersPanel users={users} />}
+      {tab === 'agents' && <FinderPanel />}
     </div>
   )
 }
