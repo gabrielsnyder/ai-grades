@@ -99,6 +99,7 @@ model Indicator {
   rubricVersion    Int             @default(1)
   weight           Float?
   meta             Json?
+  chamber          String?         // 'SENATE' | 'HOUSE' | null (chamber-agnostic)
   appliesToGroupId String?
   appliesToGroup   CandidateGroup? @relation(fields: [appliesToGroupId], references: [id])
   assessments      Assessment[]
