@@ -68,6 +68,7 @@ function AssessmentForm({ initial, onSave, onCancel }) {
 export default function CandidateEditor({ candidate, indicatorData: initialData }) {
   const [indicatorData, setIndicatorData] = useState(initialData)
   const [editing, setEditing] = useState(null)
+  const [assessing, setAssessing] = useState(null)
 
   const handleSave = useCallback((idx) => async (payload) => {
     const item = indicatorData[idx]
@@ -87,6 +88,26 @@ export default function CandidateEditor({ candidate, indicatorData: initialData 
     setEditing(null)
   }, [indicatorData])
 
+  const handleAssess = useCallback(async (idx) => {
+    const item = indicatorData[idx]
+    setAssessing(idx)
+    try {
+      const res = await fetch('/api/agent/assess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId: candidate.id, indicatorId: item.indicator.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? 'Assessment failed'); return }
+      const a = data.assessment
+      setIndicatorData((prev) => prev.map((d, i) =>
+        i === idx ? { ...d, assessmentId: a.id, value: a.value, rationale: a.rationale, reviewStatus: a.reviewStatus, computed: a.value } : d
+      ))
+    } finally {
+      setAssessing(null)
+    }
+  }, [indicatorData, candidate.id])
+
   return (
     <div className="page-wrap">
       <div className="page-header">
@@ -102,7 +123,9 @@ export default function CandidateEditor({ candidate, indicatorData: initialData 
 
       {indicatorData.map((item, idx) => {
         const isEditingHere = editing === idx
+        const isAssessingHere = assessing === idx
         const statusStyle = STATUS_STYLE[item.reviewStatus] ?? STATUS_STYLE.UNVERIFIED
+        const canReassess = item.reviewStatus !== 'HUMAN_REVIEWED'
 
         return (
           <div key={item.indicator.id} className="question-section">
@@ -128,13 +151,26 @@ export default function CandidateEditor({ candidate, indicatorData: initialData 
               >
                 {item.reviewStatus.replace(/_/g, ' ')}
               </span>
-              <button
-                className="btn-ghost"
-                style={{ fontSize: 12, padding: '4px 10px', marginLeft: 'auto' }}
-                onClick={() => setEditing(isEditingHere ? null : idx)}
-              >
-                {isEditingHere ? 'Cancel' : 'Edit'}
-              </button>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                {canReassess && (
+                  <button
+                    className="btn-ghost"
+                    style={{ fontSize: 12, padding: '4px 10px', color: '#1565C0' }}
+                    disabled={isAssessingHere || editing !== null}
+                    onClick={() => handleAssess(idx)}
+                    title="Run AI assessor for this indicator"
+                  >
+                    {isAssessingHere ? 'Assessing…' : 'Run AI'}
+                  </button>
+                )}
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => setEditing(isEditingHere ? null : idx)}
+                >
+                  {isEditingHere ? 'Cancel' : 'Edit'}
+                </button>
+              </div>
             </div>
 
             {isEditingHere ? (
