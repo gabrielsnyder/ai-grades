@@ -383,6 +383,7 @@ async function main() {
         name: senator.name,
         state: senator.state,
         party: senator.party,
+        office: senator.state + ' Sen',
       },
     })
 
