@@ -296,6 +296,16 @@ Each phase has acceptance criteria. Verify before moving on. **Phases 1–3 are 
 
 ## 11. Conventions & guardrails for the coding session
 
+### Two guiding principles
+
+> **"Let the intelligence be intelligent."**
+> Trust the LLMs to do judgment work — scoring, verification, normalization, confidence estimation. Don't over-engineer prompt guardrails or re-implement judgment in code. Write clear rubrics, give the model good context, and let it run. When in doubt, add a better prompt, not more code.
+
+> **"In code and databases we trust."**
+> The pipeline's *reliability* lives in code and schema. Deterministic validators run before the fat LLM call. `reviewStatus` is enforced by DB constraints and agent rules, not by hoping the model behaves. Rollup math lives in `lib/scoring` and nowhere else. `AgentRun`s are idempotent and scoped. `SearchCache` makes search reproducible and auditable. The LLM's output is a *row in a table* — provisional until code validates and commits it.
+
+These two work together: give the LLM room to be smart, then pin the results down in durable, queryable, re-runnable structure.
+
 - **Branch:** develop on `claude/mobile-scorecard-webapp-i587qz`. Commit per phase with clear messages. Push when a phase is green.
 - **Stack discipline:** Next.js App Router (server components for data fetch, `'use client'` only where needed). Keep the mobile-first CSS approach in `app/globals.css` (card < 768px, table ≥ 768px). Match existing file style and naming.
 - **Server pages that hit the DB** need `export const dynamic = 'force-dynamic'` (the build prerenders otherwise — this already bit us once).
