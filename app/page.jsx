@@ -57,7 +57,7 @@ async function getData() {
     const avg = overallScore(questionScores.map(s => s.computed))
     const answered = questionScores.filter(s => s.computed !== null).length
 
-    return { id: c.id, name: c.name, state: c.state, party: c.party, questionScores, overallScore: avg, answeredCount: answered }
+    return { id: c.id, name: c.name, state: c.state, office: c.office, party: c.party, questionScores, overallScore: avg, answeredCount: answered }
   })
 
   return { candidates: processed, questions }
