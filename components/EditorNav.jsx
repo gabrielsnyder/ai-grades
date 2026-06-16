@@ -22,6 +22,9 @@ export default function EditorNav({ flagCount }) {
         Flag Queue
         {flagCount > 0 && <span className="flag-badge">{flagCount}</span>}
       </Link>
+      <Link href="/admin" className={`nav-link ${pathname.startsWith('/admin') ? 'active' : ''}`}>
+        Admin
+      </Link>
       <div className="nav-spacer" />
       <button className="nav-logout" onClick={handleLogout}>Sign out</button>
     </nav>
