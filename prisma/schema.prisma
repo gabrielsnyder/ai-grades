@@ -7,6 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
+// Legacy — used by Indicator (transition) and TypeWeight (until P3 teardown).
 enum IndicatorType {
   BILL_VOTE
   PUBLIC_STATEMENT
@@ -14,12 +17,32 @@ enum IndicatorType {
   CUSTOM
 }
 
+// New — used by Evidence and Signal.
+// Maps to IndicatorType for TypeWeight lookups during transition (see lib/constants.js).
+enum EvidenceType {
+  VOTE_RECORD
+  STATEMENT
+  CAMPAIGN_STATEMENT
+  ARTICLE
+  CUSTOM
+}
+
+enum SignalKind {
+  VOTE
+  DISCOVERY
+}
+
+// DRAFT / PUBLISHED are the new canonical states.
+// UNVERIFIED / MACHINE_VERIFIED / AUTO_CORRECTED kept only for legacy Assessment rows
+// during transition; removed in P4 teardown after data migration.
 enum ReviewStatus {
+  DRAFT
+  PUBLISHED
+  FLAGGED
+  HUMAN_REVIEWED
   UNVERIFIED
   MACHINE_VERIFIED
   AUTO_CORRECTED
-  FLAGGED
-  HUMAN_REVIEWED
 }
 
 enum Origin {
@@ -31,6 +54,7 @@ enum AgentRunType {
   CANDIDATE_FINDER
   RESEARCHER
   ASSESSOR
+  VOTE_LOADER
   VERIFIER
 }
 
@@ -52,6 +76,13 @@ enum FlagStatus {
   RESOLVED
 }
 
+enum UserRole {
+  ADMIN
+  EDITOR
+}
+
+// ── Core models ───────────────────────────────────────────────────────────────
+
 model Candidate {
   id           String          @id @default(cuid())
   name         String
@@ -60,14 +91,17 @@ model Candidate {
   groupId      String?
   office       String?
   electionYear Int?
-  externalId   String?
+  externalId   String?         // FEC candidate ID
+  bioguideId   String?         // Bioguide ID — crosswalk for congressional vote records
   group        CandidateGroup? @relation(fields: [groupId], references: [id])
-  assessments  Assessment[]
+  assessments  Assessment[]    // legacy — removed in P4
   sources      Source[]
+  evidence     Evidence[]
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
   @@index([groupId])
+  @@index([bioguideId])
 }
 
 model CandidateGroup {
@@ -75,7 +109,8 @@ model CandidateGroup {
   name        String
   description String?
   candidates  Candidate[]
-  indicators  Indicator[]
+  indicators  Indicator[] // legacy — removed in P4
+  signals     Signal[]
 }
 
 model Question {
@@ -84,10 +119,222 @@ model Question {
   description String?
   shortLabel  String?
   order       Int
-  indicators  Indicator[]
+  indicators  Indicator[] // legacy — removed in P4
+  signals     Signal[]
+  evidence    Evidence[]
 
   @@index([order])
 }
+
+// ── Layer 1: Signals (candidate-agnostic probes) ──────────────────────────────
+
+model Signal {
+  id               String          @id @default(cuid())
+  questionId       String
+  question         Question        @relation(fields: [questionId], references: [id])
+  kind             SignalKind
+  title            String
+  description      String?         @db.Text
+  chamber          String?         // 'HOUSE' | 'SENATE' | null (both)
+  appliesToGroupId String?
+  appliesToGroup   CandidateGroup? @relation(fields: [appliesToGroupId], references: [id])
+  // VOTE-only fields:
+  rollCallId       String?
+  rollCall         RollCall?       @relation(fields: [rollCallId], references: [id])
+  yesMeans         Int?            // stance (1–5) a YES vote implies; NO implies 6 minus this
+  evidence         Evidence[]
+
+  @@index([questionId])
+}
+
+model Bill {
+  id        String     @id @default(cuid())
+  congress  Int
+  chamber   String     // 'HOUSE' | 'SENATE'
+  number    String     // normalized: "hr7103", "s1234"
+  title     String
+  summary   String?    @db.Text
+  rollCalls RollCall[]
+
+  @@unique([congress, chamber, number])
+}
+
+model RollCall {
+  id          String       @id @default(cuid())
+  billId      String
+  bill        Bill         @relation(fields: [billId], references: [id])
+  congress    Int
+  chamber     String
+  number      Int
+  date        DateTime?
+  question    String?      // clerk's question text for the vote
+  memberVotes MemberVote[]
+  signals     Signal[]
+
+  @@unique([congress, chamber, number])
+  @@index([billId])
+}
+
+model MemberVote {
+  id         String   @id @default(cuid())
+  rollCallId String
+  rollCall   RollCall @relation(fields: [rollCallId], references: [id], onDelete: Cascade)
+  bioguideId String
+  position   String   // 'YES' | 'NO' | 'PRESENT' | 'NOT_VOTING'
+
+  @@unique([rollCallId, bioguideId])
+  @@index([bioguideId])
+}
+
+// ── Layer 2: Evidence (per-candidate scored facts) ────────────────────────────
+
+model Evidence {
+  id           String       @id @default(cuid())
+  candidateId  String
+  candidate    Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     Question     @relation(fields: [questionId], references: [id])
+  signalId     String?
+  signal       Signal?      @relation(fields: [signalId], references: [id])
+  type         EvidenceType
+  stance       Int?         // 1–5; set by LLM (statements) or deterministically (vote records)
+  confidence   Float        @default(0.5)
+  rationale    String?      @db.Text
+  sourceId     String?
+  source       Source?      @relation(fields: [sourceId], references: [id])
+  excerpt      String?      @db.Text
+  origin       Origin       @default(AGENT)
+  reviewStatus ReviewStatus @default(DRAFT)
+  rubricVersion Int         @default(1)
+  agentRunId   String?
+  agentRun     AgentRun?    @relation(fields: [agentRunId], references: [id])
+  flags        Flag[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([candidateId])
+  @@index([questionId])
+  @@index([candidateId, questionId])
+}
+
+// ── Layer 3: Grades are COMPUTED in lib/scoring.js, not stored ────────────────
+// questionGrade(evidence, typeWeights) = weighted avg of publishable Evidence stances
+// overallGrade(questionGrades) = avg of non-null question grades
+// No QuestionScore table.
+
+// ── Weighting ─────────────────────────────────────────────────────────────────
+
+model WeightingProfile {
+  id          String       @id @default(cuid())
+  name        String
+  isActive    Boolean      @default(false)
+  typeWeights TypeWeight[]
+}
+
+// type field uses IndicatorType during transition; migrated to EvidenceType in P3.
+model TypeWeight {
+  id        String           @id @default(cuid())
+  profileId String
+  profile   WeightingProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  type      IndicatorType
+  weight    Float
+
+  @@unique([profileId, type])
+}
+
+// ── Sources, Flags, AgentRuns ─────────────────────────────────────────────────
+
+model Source {
+  id          String     @id @default(cuid())
+  candidateId String
+  candidate   Candidate  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  url         String?
+  title       String?
+  excerpt     String?    @db.Text
+  publishedAt DateTime?
+  status      SourceStatus @default(FOUND)
+  agentRunId  String?
+  agentRun    AgentRun?  @relation(fields: [agentRunId], references: [id])
+  // legacy relations — AssessmentSource removed in P4
+  assessments AssessmentSource[]
+  corrections Correction[]
+  flags       Flag[]
+  evidence    Evidence[]
+  createdAt   DateTime   @default(now())
+
+  @@index([candidateId])
+}
+
+model Flag {
+  id           String      @id @default(cuid())
+  agentRunId   String
+  agentRun     AgentRun    @relation(fields: [agentRunId], references: [id])
+  targetType   String
+  targetId     String
+  // Legacy — points to Assessment (removed in P4)
+  assessmentId String?
+  assessment   Assessment? @relation(fields: [assessmentId], references: [id])
+  // New — points to Evidence
+  evidenceId   String?
+  evidence     Evidence?   @relation(fields: [evidenceId], references: [id])
+  sourceId     String?
+  source       Source?     @relation(fields: [sourceId], references: [id])
+  reason       String      @db.Text
+  severity     String
+  confidence   Float
+  status       FlagStatus  @default(OPEN)
+  createdAt    DateTime    @default(now())
+}
+
+model AgentRun {
+  id               String         @id @default(cuid())
+  type             AgentRunType
+  status           AgentRunStatus @default(QUEUED)
+  scope            Json?
+  provider         String?
+  model            String?
+  dryRun           Boolean        @default(false)
+  costInputTokens  Int?
+  costOutputTokens Int?
+  searchCount      Int            @default(0)
+  cacheHitCount    Int            @default(0)
+  error            String?        @db.Text
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  assessments      Assessment[]   // legacy — removed in P4
+  sources          Source[]
+  corrections      Correction[]   // legacy — removed in P4
+  flags            Flag[]
+  evidence         Evidence[]
+}
+
+model SearchCache {
+  id              String    @id @default(cuid())
+  query           String
+  normalizedQuery String
+  results         Json
+  resultCount     Int       @default(0)
+  source          String    @default("SERPER")
+  fetchedAt       DateTime  @default(now())
+  expiresAt       DateTime?
+  hitCount        Int       @default(0)
+  candidateId     String?
+  indicatorId     String?
+
+  @@index([normalizedQuery])
+  @@index([candidateId])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(EDITOR)
+  createdAt    DateTime @default(now())
+}
+
+// ── Legacy models (removed in P4 after data migration) ───────────────────────
 
 model Indicator {
   id               String          @id @default(cuid())
@@ -99,30 +346,13 @@ model Indicator {
   rubricVersion    Int             @default(1)
   weight           Float?
   meta             Json?
-  chamber          String?         // 'SENATE' | 'HOUSE' | null (chamber-agnostic)
+  chamber          String?
   appliesToGroupId String?
   appliesToGroup   CandidateGroup? @relation(fields: [appliesToGroupId], references: [id])
   assessments      Assessment[]
 
   @@unique([questionId, type, name])
   @@index([questionId])
-}
-
-model WeightingProfile {
-  id          String       @id @default(cuid())
-  name        String
-  isActive    Boolean      @default(false)
-  typeWeights TypeWeight[]
-}
-
-model TypeWeight {
-  id        String           @id @default(cuid())
-  profileId String
-  profile   WeightingProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  type      IndicatorType
-  weight    Float
-
-  @@unique([profileId, type])
 }
 
 model Assessment {
@@ -153,25 +383,6 @@ model Assessment {
   @@index([indicatorId])
 }
 
-model Source {
-  id          String             @id @default(cuid())
-  candidateId String
-  candidate   Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  url         String?
-  title       String?
-  excerpt     String?            @db.Text
-  publishedAt DateTime?
-  status      SourceStatus       @default(FOUND)
-  agentRunId  String?
-  agentRun    AgentRun?          @relation(fields: [agentRunId], references: [id])
-  assessments AssessmentSource[]
-  corrections Correction[]
-  flags       Flag[]
-  createdAt   DateTime           @default(now())
-
-  @@index([candidateId])
-}
-
 model AssessmentSource {
   assessmentId String
   sourceId     String
@@ -179,28 +390,6 @@ model AssessmentSource {
   source       Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@id([assessmentId, sourceId])
-}
-
-model AgentRun {
-  id               String         @id @default(cuid())
-  type             AgentRunType
-  status           AgentRunStatus @default(QUEUED)
-  scope            Json?
-  provider         String?
-  model            String?
-  dryRun           Boolean        @default(false)
-  costInputTokens  Int?
-  costOutputTokens Int?
-  searchCount      Int            @default(0)
-  cacheHitCount    Int            @default(0)
-  error            String?        @db.Text
-  startedAt        DateTime?
-  finishedAt       DateTime?
-  createdAt        DateTime       @default(now())
-  assessments      Assessment[]
-  sources          Source[]
-  corrections      Correction[]
-  flags            Flag[]
 }
 
 model Correction {
@@ -217,51 +406,4 @@ model Correction {
   after        String?     @db.Text
   confidence   Float
   createdAt    DateTime    @default(now())
-}
-
-model Flag {
-  id           String      @id @default(cuid())
-  agentRunId   String
-  agentRun     AgentRun    @relation(fields: [agentRunId], references: [id])
-  targetType   String
-  targetId     String
-  assessmentId String?
-  assessment   Assessment? @relation(fields: [assessmentId], references: [id])
-  sourceId     String?
-  source       Source?     @relation(fields: [sourceId], references: [id])
-  reason       String      @db.Text
-  severity     String
-  confidence   Float
-  status       FlagStatus  @default(OPEN)
-  createdAt    DateTime    @default(now())
-}
-
-model SearchCache {
-  id              String    @id @default(cuid())
-  query           String
-  normalizedQuery String
-  results         Json
-  resultCount     Int       @default(0)
-  source          String    @default("SERPER")
-  fetchedAt       DateTime  @default(now())
-  expiresAt       DateTime?
-  hitCount        Int       @default(0)
-  candidateId     String?
-  indicatorId     String?
-
-  @@index([normalizedQuery])
-  @@index([candidateId])
-}
-
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  role         UserRole @default(EDITOR)
-  createdAt    DateTime @default(now())
-}
-
-enum UserRole {
-  ADMIN
-  EDITOR
 }
