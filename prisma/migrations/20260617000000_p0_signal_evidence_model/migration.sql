@@ -119,6 +119,9 @@ CREATE INDEX IF NOT EXISTS "Evidence_candidateId_idx"          ON "Evidence"("ca
 CREATE INDEX IF NOT EXISTS "Evidence_questionId_idx"           ON "Evidence"("questionId");
 CREATE INDEX IF NOT EXISTS "Evidence_candidateId_questionId_idx" ON "Evidence"("candidateId", "questionId");
 
+CREATE UNIQUE INDEX IF NOT EXISTS "Evidence_candidateId_questionId_signalId_key"
+  ON "Evidence"("candidateId", "questionId", "signalId");
+
 -- ── Flag: add evidenceId ──────────────────────────────────────────────────────
 
 ALTER TABLE "Flag"

@@ -168,6 +168,9 @@ model RollCall {
   number      Int
   date        DateTime?
   question    String?      // clerk's question text for the vote
+  loadStatus  String       @default("PENDING")  // PENDING | LOADED | ERROR
+  loadedAt    DateTime?
+  loadError   String?
   memberVotes MemberVote[]
   signals     Signal[]
 
@@ -212,6 +215,7 @@ model Evidence {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
+  @@unique([candidateId, questionId, signalId])
   @@index([candidateId])
   @@index([questionId])
   @@index([candidateId, questionId])
