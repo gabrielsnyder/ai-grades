@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import BillsPanel from './BillsPanel'
 
 function UsersPanel({ users }) {
   const router = useRouter()
@@ -490,7 +491,7 @@ function ResearchPanel({ candidateCount }) {
 }
 
 export default function AdminDashboard({ users, questions, groups, candidateCount }) {
-  const [tab, setTab] = useState('questions')
+  const [tab, setTab] = useState('bills')
 
   return (
     <div className="page-wrap">
@@ -500,11 +501,12 @@ export default function AdminDashboard({ users, questions, groups, candidateCoun
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #dde1e7' }}>
         {[
+          { key: 'bills',     label: 'Bill Tracker' },
           { key: 'questions', label: 'Questions' },
-          { key: 'groups', label: 'Groups' },
-          { key: 'users', label: 'Users' },
-          { key: 'research', label: 'Research' },
-          { key: 'agents', label: 'Agents' },
+          { key: 'groups',    label: 'Groups' },
+          { key: 'users',     label: 'Users' },
+          { key: 'research',  label: 'Research' },
+          { key: 'agents',    label: 'Agents' },
         ].map(({ key, label }) => (
           <button
             key={key}
@@ -525,11 +527,12 @@ export default function AdminDashboard({ users, questions, groups, candidateCoun
         ))}
       </div>
 
+      {tab === 'bills'     && <BillsPanel questions={questions} />}
       {tab === 'questions' && <QuestionsPanel questions={questions} />}
-      {tab === 'groups' && <GroupsPanel groups={groups} candidateCount={candidateCount} />}
-      {tab === 'users' && <UsersPanel users={users} />}
-      {tab === 'research' && <ResearchPanel candidateCount={candidateCount} />}
-      {tab === 'agents' && <FinderPanel />}
+      {tab === 'groups'    && <GroupsPanel groups={groups} candidateCount={candidateCount} />}
+      {tab === 'users'     && <UsersPanel users={users} />}
+      {tab === 'research'  && <ResearchPanel candidateCount={candidateCount} />}
+      {tab === 'agents'    && <FinderPanel />}
     </div>
   )
 }
