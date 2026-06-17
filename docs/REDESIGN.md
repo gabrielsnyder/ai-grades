@@ -66,9 +66,12 @@ Exactly one row per `(candidate, question)` — which is exactly what the public
 - `reviewStatus` (see §5), `origin`, `rubricVersion`, `agentRunId`
 - cites Evidence via `QuestionScoreEvidence` join.
 
-`value` = weighted average of cited Evidence `stance` values (weights by evidence type, via the
-existing `WeightingProfile`/`TypeWeight`). The LLM writes the `rationale`; the number stays
-deterministic and auditable. Humans can override `value` + `rationale`.
+`value` is produced **holistically by the LLM** ("let the intelligence be intelligent"): the
+assessor reads every Evidence item for the question — each already carrying a `stance` and
+`confidence` — and weighs them with judgment to emit one 1–5 score plus rationale. Evidence
+*type* weights (`WeightingProfile`/`TypeWeight`) become **advisory guidance in the prompt**
+("a bill vote is stronger signal than a floor remark"), not a deterministic multiplier.
+Humans can override `value` + `rationale`.
 
 ---
 
@@ -218,12 +221,19 @@ This eliminates the entire "infer a vote from a search snippet" failure mode (Aa
 2. Output is **Evidence rows tied to a questionId**, not new global Indicators.
 3. Each Evidence gets a `stance` + `confidence` from the LLM.
 
-### 4c. Scoring — per-question rollup (≤16 calls/candidate, not dozens)
+### 4c. Scoring — holistic per-question rollup (≤16 calls/candidate, not dozens)
 For each `(candidate, question)` with evidence:
-- `value` = weighted average of Evidence `stance` (weights by `EvidenceType`).
-- LLM writes a `rationale` citing the evidence; directional framework (skeptic↔booster)
-  lives here, as it does now in `SCORING_FRAMEWORK`.
+- The assessor LLM reads **all** Evidence for the question (each with its `stance` +
+  `confidence`) and emits one 1–5 `value`, `confidence`, and `rationale` using judgment.
+- The directional framework (skeptic↔booster) and evidence-strength guidance (votes >
+  statements) live in the prompt, as in today's `SCORING_FRAMEWORK`.
 - Human override replaces `value`+`rationale` and sets `HUMAN_REVIEWED`.
+
+**Consequence:** because scoring is holistic, type weights are no longer a live client-side
+multiplier. The editor's instant weight-slider recompute (`EditorWeightsView`) is retired or
+reframed — changing weights changes prompt *guidance* and requires a re-score (agent run),
+not an instant recalculation. The frontend's only arithmetic is averaging the 16 question
+values into the Overall.
 
 ---
 
@@ -261,8 +271,9 @@ Avoid ProPublica Congress API (sunset/unreliable) as a primary source.
 
 ## 7. Other fixes the teardown should fold in
 
-- **One scoring function** `computeScores(candidates, questions, typeWeights)` in `lib/scoring.js`;
-  call it from `app/page.jsx`, `app/editor/page.jsx`, `EditorWeightsView`.
+- **Scoring on the frontend collapses** to averaging the 16 `QuestionScore.value`s into the
+  Overall (one `overallScore()` used everywhere). The weighted-average-over-indicators
+  machinery (`weightedScore`, `resolveWeight`) is retired with `Assessment`.
 - **Auth middleware** (`middleware.js`) guarding `/editor`, `/admin`, `/api/admin/*`,
   `/api/agent/*` — currently unprotected server-side.
 - **Externalize prompts** (`SCORING_FRAMEWORK`, researcher tool instructions) out of source.
